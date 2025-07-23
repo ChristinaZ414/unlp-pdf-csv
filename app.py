@@ -2,6 +2,7 @@ import streamlit as st
 import pdfplumber
 import pandas as pd
 import re
+from datetime import datetime
 
 headers = [
     'PDF ITINERARY', 'APPROVED', 'TM NUMBER', 'TRAVELER NAME', 'ROLE', 'EMAIL ADDRESS',
@@ -17,98 +18,52 @@ headers = [
     'ADDRESS CODE', 'IN DATE', 'OUT DATE', 'ADDRESS PLUS TEXT'
 ]
 
-def extract_fields(text):
+def title_case(text):
+    return text.title().replace("’", "'") if text else "-"
+
+def format_time(t):
+    # Input: '08:25', Output: '0825'
+    if not t or not re.match(r"\d{2}:\d{2}", t):
+        return "-"
+    return t.replace(":", "")
+
+def format_date(dow, mon, day):
+    # Input: 'Mon', 'Jul', '28' -> 'Monday July 28'
+    try:
+        dt = datetime.strptime(f"{dow} {mon} {day}", "%a %b %d")
+        return dt.strftime("%A %B %-d")
+    except Exception:
+        return "-"
+
+def extract_flights(text):
+    # Each row: 62 columns
     row = ["-"] * 62
 
-    # Booking Reference
-    booking_ref = re.search(r'Booking Reference\s+([A-Z0-9]{6})', text)
-    if booking_ref:
-        row[6] = booking_ref.group(1)
+    # Find all flights in the text (split by 'Depart\n', skip the first empty chunk)
+    flights = re.split(r"(?=Depart\s*\n)", text)[1:]
 
-    # Ticket Number
-    ticket = re.search(r'Ticket #\s+(\d{13})', text)
-    if ticket:
-        row[7] = ticket.group(1)
+    for i, flight in enumerate(flights[:4]):
+        base = 10 + i * 7  # where this flight's info starts
 
-    # Traveler Name
-    name = re.search(r'For:\s*\n([A-Z/ ]+)', text)
-    if not name:
-        name = re.search(r'Passenger\s*([A-Z/ ]+)', text)
-    if name:
-        full = name.group(1).replace("MR", "").replace("MRS", "").replace("MS", "").strip()
-        if "/" in full:
-            last, first = full.split("/", 1)
-            row[3] = (first.title() + " " + last.title()).replace("  ", " ").strip()
+        # Date (look for 'Depart\nMon - Jul 28' or 'Depart\nMon\n-\nJul\n28')
+        date_match = re.search(r"Depart\s*\n([A-Za-z]{3})\s*-?\s*([A-Za-z]{3})\s*(\d{1,2})", flight)
+        dow, mon, day = (date_match.groups() if date_match else ("", "", ""))
+        if dow and mon and day:
+            row[base] = format_date(dow, mon, day)
         else:
-            row[3] = full.title().strip()
+            row[base] = "-"
 
-    # Flight 1: Date
-    flight1_date = re.search(r'Depart\s*\n([A-Za-z]{3} - [A-Za-z]{3} \d{1,2})', text)
-    if flight1_date:
-        row[10] = flight1_date.group(1).strip()
+        # Airline (main carrier, skip "Jazz", "Rouge", "Cityline" etc.)
+        airline_match = re.search(r"([A-Za-z\s]+?)\n\d{2,4}", flight)
+        airline = airline_match.group(1).strip() if airline_match else "-"
+        # Remove unwanted words (add/remove as per your carriers)
+        for suffix in ["Jazz", "Rouge", "Cityline", "Ltd", "Gmbh", "Airlines", "Airways"]:
+            if airline.lower().endswith(suffix.lower()):
+                airline = airline[:-(len(suffix))].strip()
+        row[base+1] = title_case(airline)
 
-    # Flight 1: Airline
-    airline = re.search(r'Web Check-In and Airline Confirmation:\s*([A-Za-z\s]+) -', text)
-    if airline:
-        row[11] = airline.group(1).strip()
-    else:
-        airline = re.search(r'Airline Code\s+([A-Z]{2})', text)
-        if airline:
-            row[11] = airline.group(1)
-
-    # Flight 1: Flight Number
-    flight_num = re.search(r'Air Canada Rouge\s*\n(\d+)', text)
-    if not flight_num:
-        flight_num = re.search(r'Flight #\s*(\d+)', text)
-    if not flight_num:
-        flight_num = re.search(r'Flight Number\s+(\d+)', text)
-    if flight_num:
-        row[12] = flight_num.group(1).strip()
-
-    # FLIGHT 1 FROM CITY (column 13)
-    from_city = re.search(r'Origin\s*\n([A-Za-z\'’\s.,&\(\)\-]+)', text)
-    if from_city:
-        row[13] = from_city.group(1).strip()
-    else:
-        row[13] = "St. John’s (YYT)"
-
-    # FLIGHT 1 TO CITY (column 14)
-    to_city = re.search(r'Destination\s*\n([A-Za-z\'’\s.,&\(\)\-]+)', text)
-    if to_city:
-        row[14] = to_city.group(1).strip()
-    else:
-        row[14] = "Toronto (YYZ)"
-
-    # FLIGHT 1 DEPARTURE TIME (column 15)
-    dep_time = re.search(r'Depart\s*\n(\d{2}:\d{2})', text)
-    if dep_time:
-        row[15] = dep_time.group(1).replace(":", "")
-
-    # FLIGHT 1 ARRIVAL TIME (column 16)
-    arr_time = re.search(r'Arrive\s*\n(\d{2}:\d{2})', text)
-    if arr_time:
-        row[16] = arr_time.group(1).replace(":", "")
-
-    return row
-
-st.title("UNLP Travel PDF to Extraction Grid CSV")
-
-uploaded_file = st.file_uploader("Upload a Travel PDF", type="pdf")
-
-if uploaded_file:
-    with pdfplumber.open(uploaded_file) as pdf:
-        text = "\n".join(page.extract_text() for page in pdf.pages if page.extract_text())
-
-    row = extract_fields(text)
-
-    df = pd.DataFrame([row], columns=headers)
-    st.write("Preview of extracted CSV row:")
-    st.dataframe(df)
-
-    csv = df.to_csv(index=False)
-    st.download_button(
-        label="Download CSV",
-        data=csv,
-        file_name="extraction_grid.csv",
-        mime='text/csv'
-    )
+        # Flight #: "1675" or "AC 1675" (look for 2-4 digits after airline)
+        flight_num = re.search(r"\n(\d{2,4})\n", flight)
+        if flight_num:
+            code = "AC" if "Air Canada" in airline else ""
+            row[base+2] =
