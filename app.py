@@ -95,4 +95,20 @@ st.title("UNLP Travel PDF to Extraction Grid CSV")
 
 uploaded_file = st.file_uploader("Upload a Travel PDF", type="pdf")
 
-i
+if uploaded_file:
+    with pdfplumber.open(uploaded_file) as pdf:
+        text = "\n".join(page.extract_text() for page in pdf.pages if page.extract_text())
+
+    row = extract_fields(text)
+
+    df = pd.DataFrame([row], columns=headers)
+    st.write("Preview of extracted CSV row:")
+    st.dataframe(df)
+
+    csv = df.to_csv(index=False)
+    st.download_button(
+        label="Download CSV",
+        data=csv,
+        file_name="extraction_grid.csv",
+        mime='text/csv'
+    )
