@@ -39,6 +39,7 @@ def format_date(dow, mon, day):
 def extract_fields(text):
     row = ["-"] * 62
 
+    # Name
     name_match = re.search(r"For:\s*([A-Z/ ]+)", text)
     if not name_match:
         name_match = re.search(r"Passenger\s*([A-Z/ ]+)", text)
@@ -50,67 +51,60 @@ def extract_fields(text):
         else:
             row[3] = full.title().strip()
 
+    # Booking Reference
     booking_match = re.search(r"Booking Reference\s+([A-Z0-9]{6})", text)
-    if not booking_match:
-        booking_match = re.search(r"Airline Confirmation: [A-Z]+ - ([A-Z0-9]{6})", text)
     if booking_match:
         row[6] = booking_match.group(1)
 
+    # Ticket Number
     ticket_match = re.search(r"Ticket #\s*(\d{13})", text)
-    if not ticket_match:
-        ticket_match = re.search(r"TKT (\d{13})", text)
     if ticket_match:
         row[7] = ticket_match.group(1)
 
-    flight_blocks = re.split(r'Origin\n', text)[1:]
+    # Extract first flight block between "Origin" and next "Origin" or end
+    flights = re.findall(r"Origin\n(.*?)(?=Origin\n|$)", text, re.DOTALL)
+    if flights:
+        block = flights[0]
 
-    airline_codes = {
-        "Air Canada": "AC",
-        "Westjet": "WS",
-        "Lufthansa": "LH",
-        "Porter": "PD",
-        "United": "UA"
-    }
+        # Airline (first line)
+        airline_match = re.match(r"([^\n]+)", block)
+        airline = airline_match.group(1).strip() if airline_match else "-"
+        row[11] = title_case(airline)
 
-    for i, block in enumerate(flight_blocks[:4]):
-        base = 10 + i * 7
-
-        airline_match = re.search(r'(Air Canada(?: Rouge)?|Westjet|Deutsche Lufthansa AG|United Airlines|Porter Airlines)', block)
-        airline = airline_match.group(1).replace("Rouge", "").strip() if airline_match else "-"
-        row[base+1] = title_case(airline)
-
-        flight_num_match = re.search(r'(?:^|\n)(\d{3,4})\n', block)
+        # Flight Number (digits after airline)
+        flight_num_match = re.search(r"\n(\d{3,4})", block)
         flight_num = flight_num_match.group(1) if flight_num_match else "-"
-        airline_code = airline_codes.get(airline, "")
-        if airline_code != "-" and flight_num != "-":
-            row[base+2] = f"{airline_code} {flight_num}"
-        else:
-            row[base+2] = flight_num
+        row[12] = flight_num
 
-        lines = block.split('\n')
-        from_city = lines[0].strip() if lines else "-"
-        from_code_match = re.search(r'\(([A-Z]{3})\)', block)
-        from_code = from_code_match.group(1) if from_code_match else ""
-        row[base+3] = f"{title_case(from_city)} ({from_code})" if from_code else title_case(from_city)
+        # From City and Code
+        from_city_match = re.search(r"Origin\n([^\n]+)\n([^\n]+)\n\(([A-Z]{3})\)", text)
+        if from_city_match:
+            city = from_city_match.group(1).strip()
+            code = from_city_match.group(3)
+            row[13] = f"{title_case(city)} ({code})"
 
-        to_city_match = re.search(r'Destination\n([^\n]+)', block)
-        to_city = to_city_match.group(1).strip() if to_city_match else "-"
-        to_code_match = re.search(r'Destination.*\(([A-Z]{3})\)', block)
-        to_code = to_code_match.group(1) if to_code_match else ""
-        row[base+4] = f"{title_case(to_city)} ({to_code})" if to_code else title_case(to_city)
+        # To City and Code
+        to_city_match = re.search(r"Destination\n([^\n]+)\n([^\n]+)\n\(([A-Z]{3})\)", block)
+        if to_city_match:
+            city = to_city_match.group(1).strip()
+            code = to_city_match.group(3)
+            row[14] = f"{title_case(city)} ({code})"
 
-        date_match = re.search(r'Depart\n([A-Za-z]{3}) - ([A-Za-z]{3}) (\d{1,2})', block)
-        if date_match:
-            dow, mon, day = date_match.groups()
-            row[base] = format_date(dow, mon, day)
-        else:
-            row[base] = "-"
+        # Date
+        dep_date_match = re.search(r"Depart\n([A-Za-z]{3}) - ([A-Za-z]{3}) (\d{1,2})", block)
+        if dep_date_match:
+            dow, mon, day = dep_date_match.groups()
+            row[10] = format_date(dow, mon, day)
 
-        dep_time_match = re.search(r'Depart[^\n]*\n(\d{1,2}:\d{2})', block)
-        row[base+5] = format_time(dep_time_match.group(1)) if dep_time_match else "-"
+        # Departure Time
+        dep_time_match = re.search(r"Depart\n[^\n]*\n(\d{1,2}:\d{2})", block)
+        if dep_time_match:
+            row[15] = format_time(dep_time_match.group(1))
 
-        arr_time_match = re.search(r'Arrive[^\n]*\n(\d{1,2}:\d{2})', block)
-        row[base+6] = format_time(arr_time_match.group(1)) if arr_time_match else "-"
+        # Arrival Time
+        arr_time_match = re.search(r"Arrive\n[^\n]*\n(\d{1,2}:\d{2})", block)
+        if arr_time_match:
+            row[16] = format_time(arr_time_match.group(1))
 
     return row
 
