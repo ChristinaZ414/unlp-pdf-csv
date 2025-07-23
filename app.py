@@ -36,34 +36,80 @@ def format_date(dow, mon, day):
         return "-"
 
 def extract_flights(text):
-    # Each row: 62 columns
     row = ["-"] * 62
-
-    # Find all flights in the text (split by 'Depart\n', skip the first empty chunk)
     flights = re.split(r"(?=Depart\s*\n)", text)[1:]
 
     for i, flight in enumerate(flights[:4]):
-        base = 10 + i * 7  # where this flight's info starts
+        base = 10 + i * 7
 
-        # Date (look for 'Depart\nMon - Jul 28' or 'Depart\nMon\n-\nJul\n28')
+        # Date (e.g. 'Depart\nMon - Jul 28')
         date_match = re.search(r"Depart\s*\n([A-Za-z]{3})\s*-?\s*([A-Za-z]{3})\s*(\d{1,2})", flight)
-        dow, mon, day = (date_match.groups() if date_match else ("", "", ""))
-        if dow and mon and day:
+        if date_match:
+            dow, mon, day = date_match.groups()
             row[base] = format_date(dow, mon, day)
         else:
             row[base] = "-"
 
-        # Airline (main carrier, skip "Jazz", "Rouge", "Cityline" etc.)
+        # Airline (main carrier only)
         airline_match = re.search(r"([A-Za-z\s]+?)\n\d{2,4}", flight)
         airline = airline_match.group(1).strip() if airline_match else "-"
-        # Remove unwanted words (add/remove as per your carriers)
         for suffix in ["Jazz", "Rouge", "Cityline", "Ltd", "Gmbh", "Airlines", "Airways"]:
             if airline.lower().endswith(suffix.lower()):
                 airline = airline[:-(len(suffix))].strip()
         row[base+1] = title_case(airline)
 
-        # Flight #: "1675" or "AC 1675" (look for 2-4 digits after airline)
+        # Flight # (with airline code if needed)
         flight_num = re.search(r"\n(\d{2,4})\n", flight)
         if flight_num:
             code = "AC" if "Air Canada" in airline else ""
-            row[base+2] =
+            row[base+2] = f"{code} {flight_num.group(1)}".strip() if code else flight_num.group(1)
+        else:
+            row[base+2] = "-"
+
+        # From City
+        from_match = re.search(r"Origin\n([A-Za-z\s'\-]+)", flight)
+        from_city = from_match.group(1).strip() if from_match else "-"
+        from_code = re.search(r"\(([A-Za-z]{3})\)", flight)
+        from_val = f"{title_case(from_city)} ({from_code.group(1).upper()})" if from_city != "-" and from_code else title_case(from_city)
+        row[base+3] = from_val
+
+        # To City
+        to_match = re.search(r"Destination\n([A-Za-z\s',\-\(\)]+)", flight)
+        to_city = to_match.group(1).strip() if to_match else "-"
+        to_code = re.search(r"Destination.*\(([A-Za-z]{3})\)", flight)
+        to_val = f"{title_case(to_city)} ({to_code.group(1).upper()})" if to_city != "-" and to_code else title_case(to_city)
+        row[base+4] = to_val
+
+        # Departure Time
+        dep_time_match = re.search(r"Depart\s*\n(?:[A-Za-z]{3} - [A-Za-z]{3} \d{1,2}\n)?(\d{2}:\d{2})", flight)
+        dep_time = format_time(dep_time_match.group(1)) if dep_time_match else "-"
+        row[base+5] = dep_time
+
+        # Arrival Time
+        arr_time_match = re.search(r"Arrive\s*\n(?:[A-Za-z]{3} - [A-Za-z]{3} \d{1,2}\n)?(\d{2}:\d{2})", flight)
+        arr_time = format_time(arr_time_match.group(1)) if arr_time_match else "-"
+        row[base+6] = arr_time
+
+    return row
+
+st.title("UNLP Travel PDF to Extraction Grid CSV")
+
+uploaded_file = st.file_uploader("Upload a Travel PDF", type="pdf")
+
+if uploaded_file:
+    with pdfplumber.open(uploaded_file) as pdf:
+        text = "\n".join(page.extract_text() for page in pdf.pages if page.extract_text())
+
+    row = extract_flights(text)
+
+    df = pd.DataFrame([row], columns=headers)
+    st.write("Preview of extracted CSV row:")
+    st.dataframe(df)
+
+    csv = df.to_csv(index=False)
+    st.download_button(
+        label="Download CSV",
+        data=csv,
+        file_name="extraction_grid.csv",
+        mime='text/csv'
+    )
