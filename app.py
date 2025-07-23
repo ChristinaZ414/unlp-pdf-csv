@@ -23,20 +23,35 @@ def extract_fields(text):
     # Booking Reference
     booking_ref = re.search(r'Booking Reference\s+([A-Z0-9]{6})', text)
     if booking_ref:
-        row[6] = booking_ref.group(1)  # 'BOOKING REF 1'
+        row[6] = booking_ref.group(1)
 
     # Ticket Number
     ticket = re.search(r'Ticket #\s+(\d{13})', text)
     if ticket:
-        row[7] = ticket.group(1)  # 'TICKET NUMBER 1'
+        row[7] = ticket.group(1)
 
-    # FLIGHT 1: Date
-    flight1_date = re.search(r'Depart\n([A-Za-z]{3} - [A-Za-z]{3} \d{1,2})', text)
+    # Traveler Name
+    # Try to capture "For:\nNAME" or "Passenger\nNAME"
+    name = re.search(r'For:\s*\n([A-Z/ ]+)', text)
+    if not name:
+        name = re.search(r'Passenger\s*([A-Z/ ]+)', text)
+    if name:
+        # Convert "GUIGNARD/JUSTIN DANIEL MR" to "Justin Daniel Guignard"
+        full = name.group(1).replace("MR", "").replace("MRS", "").replace("MS", "").strip()
+        # Split last/first and title if possible
+        if "/" in full:
+            last, first = full.split("/", 1)
+            row[3] = (first.title() + " " + last.title()).replace("  ", " ").strip()
+        else:
+            row[3] = full.title().strip()
+
+    # Flight 1: Date (e.g., "Depart\nSun - Jul 27")
+    flight1_date = re.search(r'Depart\s*\n([A-Za-z]{3} - [A-Za-z]{3} \d{1,2})', text)
     if flight1_date:
         row[10] = flight1_date.group(1)
 
-    # FLIGHT 1: Airline
-    airline = re.search(r'Web Check-In and Airline Confirmation: ([A-Za-z\s]+) -', text)
+    # Flight 1: Airline (e.g., "Web Check-In and Airline Confirmation: Air Canada")
+    airline = re.search(r'Web Check-In and Airline Confirmation:\s*([A-Za-z\s]+) -', text)
     if airline:
         row[11] = airline.group(1).strip()
     else:
@@ -44,7 +59,7 @@ def extract_fields(text):
         if airline:
             row[11] = airline.group(1)
 
-    # FLIGHT 1: Flight Number
+    # Flight 1: Flight Number (e.g., "Rouge\n1949" or "Flight Number\n1949")
     flight_num = re.search(r'Rouge\s*\n(\d+)', text)
     if flight_num:
         row[12] = "AC " + flight_num.group(1)
@@ -53,27 +68,27 @@ def extract_fields(text):
         if flight_num:
             row[12] = flight_num.group(1)
 
-    # FLIGHT 1: From City
-    from_city = re.search(r'Origin\n\n([A-Za-z,\'\s]+)\n', text)
+    # Swap "From City" and "To City" correctly
+    # To City (Destination)
+    to_city = re.search(r'Destination\s*\n([A-Za-z\'’\s.,&\(\)\-]+)', text)
+    if to_city:
+        row[14] = to_city.group(1).strip()
+    else:
+        row[14] = "Toronto (YYZ)"
+    # From City (Origin)
+    from_city = re.search(r'Origin\s*\n([A-Za-z\'’\s.,&\(\)\-]+)', text)
     if from_city:
         row[13] = from_city.group(1).strip()
     else:
         row[13] = "St. John’s (YYT)"
 
-    # FLIGHT 1: To City
-    to_city = re.search(r'Destination\n\n([A-Za-z,.\s]+)\n', text)
-    if to_city:
-        row[14] = to_city.group(1).strip()
-    else:
-        row[14] = "Toronto (YYZ)"
-
-    # FLIGHT 1: Departure Time
-    dep_time = re.search(r'Depart\n.*\n(\d{2}:\d{2})', text)
+    # Departure Time (e.g., "Depart\n13:50")
+    dep_time = re.search(r'Depart\s*\n.*?(\d{2}:\d{2})', text)
     if dep_time:
         row[15] = dep_time.group(1).replace(":", "")
 
-    # FLIGHT 1: Arrival Time
-    arr_time = re.search(r'Arrive\n.*\n(\d{2}:\d{2})', text)
+    # Arrival Time (e.g., "Arrive\n15:55")
+    arr_time = re.search(r'Arrive\s*\n.*?(\d{2}:\d{2})', text)
     if arr_time:
         row[16] = arr_time.group(1).replace(":", "")
 
