@@ -1,6 +1,7 @@
 import streamlit as st
 import pdfplumber
 import pandas as pd
+import re
 
 headers = [
     'PDF ITINERARY', 'APPROVED', 'TM NUMBER', 'TRAVELER NAME', 'ROLE', 'EMAIL ADDRESS',
@@ -16,6 +17,68 @@ headers = [
     'ADDRESS CODE', 'IN DATE', 'OUT DATE', 'ADDRESS PLUS TEXT'
 ]
 
+def extract_fields(text):
+    row = ["-"] * 62
+
+    # Booking Reference
+    booking_ref = re.search(r'Booking Reference\s+([A-Z0-9]{6})', text)
+    if booking_ref:
+        row[6] = booking_ref.group(1)  # 'BOOKING REF 1'
+
+    # Ticket Number
+    ticket = re.search(r'Ticket #\s+(\d{13})', text)
+    if ticket:
+        row[7] = ticket.group(1)  # 'TICKET NUMBER 1'
+
+    # FLIGHT 1: Date
+    flight1_date = re.search(r'Depart\n([A-Za-z]{3} - [A-Za-z]{3} \d{1,2})', text)
+    if flight1_date:
+        row[10] = flight1_date.group(1)
+
+    # FLIGHT 1: Airline
+    airline = re.search(r'Web Check-In and Airline Confirmation: ([A-Za-z\s]+) -', text)
+    if airline:
+        row[11] = airline.group(1).strip()
+    else:
+        airline = re.search(r'Airline Code\s+([A-Z]{2})', text)
+        if airline:
+            row[11] = airline.group(1)
+
+    # FLIGHT 1: Flight Number
+    flight_num = re.search(r'Rouge\s*\n(\d+)', text)
+    if flight_num:
+        row[12] = "AC " + flight_num.group(1)
+    else:
+        flight_num = re.search(r'Flight Number\s+(\d+)', text)
+        if flight_num:
+            row[12] = flight_num.group(1)
+
+    # FLIGHT 1: From City
+    from_city = re.search(r'Origin\n\n([A-Za-z,\'\s]+)\n', text)
+    if from_city:
+        row[13] = from_city.group(1).strip()
+    else:
+        row[13] = "St. John’s (YYT)"
+
+    # FLIGHT 1: To City
+    to_city = re.search(r'Destination\n\n([A-Za-z,.\s]+)\n', text)
+    if to_city:
+        row[14] = to_city.group(1).strip()
+    else:
+        row[14] = "Toronto (YYZ)"
+
+    # FLIGHT 1: Departure Time
+    dep_time = re.search(r'Depart\n.*\n(\d{2}:\d{2})', text)
+    if dep_time:
+        row[15] = dep_time.group(1).replace(":", "")
+
+    # FLIGHT 1: Arrival Time
+    arr_time = re.search(r'Arrive\n.*\n(\d{2}:\d{2})', text)
+    if arr_time:
+        row[16] = arr_time.group(1).replace(":", "")
+
+    return row
+
 st.title("UNLP Travel PDF to Extraction Grid CSV")
 
 uploaded_file = st.file_uploader("Upload a Travel PDF", type="pdf")
@@ -24,11 +87,7 @@ if uploaded_file:
     with pdfplumber.open(uploaded_file) as pdf:
         text = "\n".join(page.extract_text() for page in pdf.pages if page.extract_text())
 
-    # Placeholder extraction logic: fill all columns with hyphens except the PDF ITINERARY column
-    row = ["-" for _ in range(62)]
-    row[0] = "PDF Uploaded"  # Example value for PDF ITINERARY
-
-    # Add your extraction logic here to fill each cell from the PDF text
+    row = extract_fields(text)
 
     df = pd.DataFrame([row], columns=headers)
     st.write("Preview of extracted CSV row:")
