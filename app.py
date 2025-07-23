@@ -39,7 +39,6 @@ def format_date(dow, mon, day):
 def extract_fields(text):
     row = ["-"] * 62
 
-    # Extract traveler name
     name_match = re.search(r"For:\s*([A-Z/ ]+)", text)
     if not name_match:
         name_match = re.search(r"Passenger\s*([A-Z/ ]+)", text)
@@ -51,21 +50,18 @@ def extract_fields(text):
         else:
             row[3] = full.title().strip()
 
-    # Booking reference
     booking_match = re.search(r"Booking Reference\s+([A-Z0-9]{6})", text)
     if not booking_match:
         booking_match = re.search(r"Airline Confirmation: [A-Z]+ - ([A-Z0-9]{6})", text)
     if booking_match:
         row[6] = booking_match.group(1)
 
-    # Ticket number
     ticket_match = re.search(r"Ticket #\s*(\d{13})", text)
     if not ticket_match:
         ticket_match = re.search(r"TKT (\d{13})", text)
     if ticket_match:
         row[7] = ticket_match.group(1)
 
-    # Find flight blocks by splitting on 'Origin\n'
     flight_blocks = re.split(r'Origin\n', text)[1:]
 
     airline_codes = {
@@ -79,14 +75,63 @@ def extract_fields(text):
     for i, block in enumerate(flight_blocks[:4]):
         base = 10 + i * 7
 
-        # Airline name
         airline_match = re.search(r'(Air Canada(?: Rouge)?|Westjet|Deutsche Lufthansa AG|United Airlines|Porter Airlines)', block)
         airline = airline_match.group(1).replace("Rouge", "").strip() if airline_match else "-"
         row[base+1] = title_case(airline)
 
-        # Flight number (3-4 digits)
         flight_num_match = re.search(r'(?:^|\n)(\d{3,4})\n', block)
         flight_num = flight_num_match.group(1) if flight_num_match else "-"
         airline_code = airline_codes.get(airline, "")
         if airline_code != "-" and flight_num != "-":
-            row[base+2] = f"{airline
+            row[base+2] = f"{airline_code} {flight_num}"
+        else:
+            row[base+2] = flight_num
+
+        lines = block.split('\n')
+        from_city = lines[0].strip() if lines else "-"
+        from_code_match = re.search(r'\(([A-Z]{3})\)', block)
+        from_code = from_code_match.group(1) if from_code_match else ""
+        row[base+3] = f"{title_case(from_city)} ({from_code})" if from_code else title_case(from_city)
+
+        to_city_match = re.search(r'Destination\n([^\n]+)', block)
+        to_city = to_city_match.group(1).strip() if to_city_match else "-"
+        to_code_match = re.search(r'Destination.*\(([A-Z]{3})\)', block)
+        to_code = to_code_match.group(1) if to_code_match else ""
+        row[base+4] = f"{title_case(to_city)} ({to_code})" if to_code else title_case(to_city)
+
+        date_match = re.search(r'Depart\n([A-Za-z]{3}) - ([A-Za-z]{3}) (\d{1,2})', block)
+        if date_match:
+            dow, mon, day = date_match.groups()
+            row[base] = format_date(dow, mon, day)
+        else:
+            row[base] = "-"
+
+        dep_time_match = re.search(r'Depart[^\n]*\n(\d{1,2}:\d{2})', block)
+        row[base+5] = format_time(dep_time_match.group(1)) if dep_time_match else "-"
+
+        arr_time_match = re.search(r'Arrive[^\n]*\n(\d{1,2}:\d{2})', block)
+        row[base+6] = format_time(arr_time_match.group(1)) if arr_time_match else "-"
+
+    return row
+
+st.title("UNLP Travel PDF to Extraction Grid CSV")
+
+uploaded_file = st.file_uploader("Upload a Travel PDF", type="pdf")
+
+if uploaded_file:
+    with pdfplumber.open(uploaded_file) as pdf:
+        text = "\n".join(page.extract_text() for page in pdf.pages if page.extract_text())
+
+    row = extract_fields(text)
+
+    df = pd.DataFrame([row], columns=headers)
+    st.write("Preview of extracted CSV row:")
+    st.dataframe(df)
+
+    csv = df.to_csv(index=False)
+    st.download_button(
+        label="Download CSV",
+        data=csv,
+        file_name="extraction_grid.csv",
+        mime='text/csv'
+    )
