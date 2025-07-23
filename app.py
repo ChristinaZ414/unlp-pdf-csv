@@ -18,34 +18,51 @@ headers = [
     'ADDRESS CODE', 'IN DATE', 'OUT DATE', 'ADDRESS PLUS TEXT'
 ]
 
-def extract_flights(text):
+def title_case(text):
+    return text.title().replace("’", "'").replace("`", "'") if text else "-"
+
+def format_time(t):
+    # Input: '13:10' or '8:05', Output: '1310' or '0805'
+    if not t or not re.match(r"\d{1,2}:\d{2}", t):
+        return "-"
+    parts = t.split(":")
+    return parts[0].zfill(2) + parts[1]
+
+def format_date(day_of_week, month, day):
+    # Returns 'Friday August 8' for ('Fri', 'Aug', '08')
+    try:
+        dt = datetime.strptime(f"{day_of_week} {month} {day}", "%a %b %d")
+        return dt.strftime("%A %B %-d")
+    except Exception:
+        return "-"
+
+def extract_fields(text):
     row = ["-"] * 62
-    # Extraction logic stays here, but for now, it's just placeholder (as we need to see your real text output)
-    return row
 
-st.title("UNLP Travel PDF to Extraction Grid CSV")
+    # Passenger Name
+    name_match = re.search(r"For:\s*([A-Z/ ]+)", text)
+    if not name_match:
+        name_match = re.search(r"Passenger\s*([A-Z/ ]+)", text)
+    if name_match:
+        full = name_match.group(1).replace("MS", "").replace("MR", "").replace("MRS", "").strip()
+        if "/" in full:
+            last, first = full.split("/", 1)
+            row[3] = (first.title().strip() + " " + last.title().strip()).replace("  ", " ").strip()
+        else:
+            row[3] = full.title().strip()
 
-uploaded_file = st.file_uploader("Upload a Travel PDF", type="pdf")
+    # Booking Reference (from Air Canada - CODE or Booking Reference)
+    booking_match = re.search(r"Air Canada - ([A-Z0-9]{6})", text)
+    if not booking_match:
+        booking_match = re.search(r"Booking Reference\s+([A-Z0-9]{6})", text)
+    if booking_match:
+        row[6] = booking_match.group(1)
 
-if uploaded_file:
-    with pdfplumber.open(uploaded_file) as pdf:
-        text = "\n".join(page.extract_text() for page in pdf.pages if page.extract_text())
+    # Ticket Number
+    ticket_match = re.search(r"Ticket #\s*(\d{13})", text)
+    if not ticket_match:
+        ticket_match = re.search(r"TKT (\d{13})", text)
+    if ticket_match:
+        row[7] = ticket_match.group(1)
 
-    # This will show you and me the actual PDF text as it is extracted
-    st.subheader("Extracted Text from PDF")
-    st.text(text)
-
-    # Proceed as before, with placeholder extraction
-    row = extract_flights(text)
-
-    df = pd.DataFrame([row], columns=headers)
-    st.write("Preview of extracted CSV row:")
-    st.dataframe(df)
-
-    csv = df.to_csv(index=False)
-    st.download_button(
-        label="Download CSV",
-        data=csv,
-        file_name="extraction_grid.csv",
-        mime='text/csv'
-    )
+    # Find all flights
