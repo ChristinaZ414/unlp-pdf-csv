@@ -2,18 +2,17 @@ import streamlit as st
 import pdfplumber
 import pandas as pd
 
-# 62 headers (order and names match your extraction grid)
 headers = [
     'PDF ITINERARY', 'APPROVED', 'TM NUMBER', 'TRAVELER NAME', 'ROLE', 'EMAIL ADDRESS',
     'BOOKING REF 1', 'TICKET NUMBER 1', 'BOOKING REF 2', 'TICKET NUMBER 2',
-    'DATE', 'AIRLINE', 'FLIGHT #', 'FROM CITY', 'TO CITY', 'DEPARTURE TIME', 'ARRIVAL TIME',
-    'DATE', 'AIRLINE', 'FLIGHT #', 'FROM CITY', 'TO CITY', 'DEPARTURE TIME', 'ARRIVAL TIME',
-    'DATE', 'AIRLINE', 'FLIGHT #', 'FROM CITY', 'TO CITY', 'DEPARTURE TIME', 'ARRIVAL TIME',
-    'DATE', 'AIRLINE', 'FLIGHT #', 'FROM CITY', 'TO CITY', 'DEPARTURE TIME', 'ARRIVAL TIME',
-    'DATE', 'TIME', 'DETAILS     CODE ', 'DESTINATION', 'DETAILS CODE        PLUS TEXT',
-    'DATE', 'TIME', 'DETAILS     CODE ', 'DESTINATION', 'DETAILS CODE        PLUS TEXT',
-    'DATE', 'TIME', 'DETAILS     CODE ', 'DESTINATION', 'DETAILS CODE        PLUS TEXT',
-    'DATE', 'TIME', 'DETAILS     CODE ', 'DESTINATION', 'DETAILS CODE        PLUS TEXT',
+    'FLIGHT 1 DATE', 'FLIGHT 1 AIRLINE', 'FLIGHT 1 #', 'FLIGHT 1 FROM CITY', 'FLIGHT 1 TO CITY', 'FLIGHT 1 DEPARTURE TIME', 'FLIGHT 1 ARRIVAL TIME',
+    'FLIGHT 2 DATE', 'FLIGHT 2 AIRLINE', 'FLIGHT 2 #', 'FLIGHT 2 FROM CITY', 'FLIGHT 2 TO CITY', 'FLIGHT 2 DEPARTURE TIME', 'FLIGHT 2 ARRIVAL TIME',
+    'FLIGHT 3 DATE', 'FLIGHT 3 AIRLINE', 'FLIGHT 3 #', 'FLIGHT 3 FROM CITY', 'FLIGHT 3 TO CITY', 'FLIGHT 3 DEPARTURE TIME', 'FLIGHT 3 ARRIVAL TIME',
+    'FLIGHT 4 DATE', 'FLIGHT 4 AIRLINE', 'FLIGHT 4 #', 'FLIGHT 4 FROM CITY', 'FLIGHT 4 TO CITY', 'FLIGHT 4 DEPARTURE TIME', 'FLIGHT 4 ARRIVAL TIME',
+    'GT 1 DATE', 'GT 1 TIME', 'GT 1 DETAILS CODE', 'GT 1 DESTINATION', 'GT 1 DETAILS PLUS TEXT',
+    'GT 2 DATE', 'GT 2 TIME', 'GT 2 DETAILS CODE', 'GT 2 DESTINATION', 'GT 2 DETAILS PLUS TEXT',
+    'GT 3 DATE', 'GT 3 TIME', 'GT 3 DETAILS CODE', 'GT 3 DESTINATION', 'GT 3 DETAILS PLUS TEXT',
+    'GT 4 DATE', 'GT 4 TIME', 'GT 4 DETAILS CODE', 'GT 4 DESTINATION', 'GT 4 DETAILS PLUS TEXT',
     'ADDRESS CODE', 'IN DATE', 'OUT DATE', 'ADDRESS PLUS TEXT'
 ]
 
@@ -25,11 +24,11 @@ if uploaded_file:
     with pdfplumber.open(uploaded_file) as pdf:
         text = "\n".join(page.extract_text() for page in pdf.pages if page.extract_text())
 
-    # Extraction logic placeholder: fill in here based on your PDF’s layout and data rules
-    row = ["-" for _ in range(62)]  # default row: 62 hyphens
-    row[0] = "PDF Uploaded"  # Example marker for column 1 (PDF ITINERARY)
+    # Placeholder extraction logic: fill all columns with hyphens except the PDF ITINERARY column
+    row = ["-" for _ in range(62)]
+    row[0] = "PDF Uploaded"  # Example value for PDF ITINERARY
 
-    # You’ll add actual field extraction logic to fill each column here
+    # Add your extraction logic here to fill each cell from the PDF text
 
     df = pd.DataFrame([row], columns=headers)
     st.write("Preview of extracted CSV row:")
